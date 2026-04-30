@@ -123,10 +123,6 @@ go test -bench=. -benchmem -benchtime=2s -count=3
 
 If any of these matter for your workload, open an issue with a reproducer.
 
-## Provenance
-
-Public API and behavior were extracted from [`pixie-sh/core-go`][core-go]'s `pkg/types/clone.go` after the PR documented at `specs/001-drop-huandu-clone/` in that repo. The extraction is verbatim: same algorithm, same tests, same benchmarks. `core-go` will eventually depend on this module instead of carrying the implementation in-tree.
-
 ## License
 
 MIT — see [LICENSE](./LICENSE).

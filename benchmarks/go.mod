@@ -1,6 +1,6 @@
 module github.com/pixie-sh/clone-go/benchmarks
 
-go 1.24.4
+go 1.25.1
 
 require (
 	github.com/huandu/go-clone/generic v1.7.3
