@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Deep clone for Go using only the standard library: generic, cycle-aware, with an optional Cloneable interface for hot paths.">
+<title>clone-go</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;800&display=swap">
+<style>
+/* Layout: pixie.sh's look — black ground, white Inter, and the red/green/blue channel offset
+   on headings, labels and card edges. Single dark theme by design. */
+:root {
+  --bg: #0a0a0a;
+  --black: #000;
+  --raise: #1a1a1a;
+  --ink: #fff;
+  --muted: #b9b9b9;
+  --line: #2a2a2a;
+  --r: #e52320;
+  --g: #00ff00;
+  --b: #0000ff;
+  --g-soft: rgba(0, 255, 0, 0.1);
+  --g-line: rgba(0, 255, 0, 0.3);
+  --body: Inter, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --split: -2px -1.2px 0 var(--r), -2.5px -0.6px 0 var(--g);
+  --edges: -3px 3px 0 var(--r), -1.5px -1.5px 0 var(--b), 2px -2px 0 var(--g);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.6 var(--body); }
+.wrap {
+  max-width: 68rem; margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+a { color: inherit; text-decoration-color: var(--g); text-underline-offset: 0.2em; transition: color 0.3s ease, text-shadow 0.3s ease; }
+a:hover { color: var(--g); text-shadow: -2px -0.1px 0 var(--b), -3px -0.1px 0 var(--r); }
+:focus-visible { outline: 2px solid var(--g); outline-offset: 3px; }
+code, pre, .mono { font-family: var(--mono); }
+p code, li code, td code { font-size: 0.88em; color: var(--g); background: var(--g-soft); padding: 0.08em 0.35em; border-radius: 3px; }
+h1, h2, h3 { font-family: var(--body); text-wrap: balance; margin: 0; }
+p { margin: 0; max-width: 62ch; }
+
+/* top bar */
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; padding-block: 1.25rem; }
+.top .name { font: 700 1rem var(--body); letter-spacing: -0.01em; text-shadow: var(--split); }
+.top nav { display: flex; gap: 1.5rem; font-size: 0.95rem; }
+.top nav a { text-decoration: none; }
+
+/* hero */
+.hero { padding-block: 3.5rem 4rem; display: flex; flex-direction: column; gap: 2rem; }
+h1 {
+  font-size: clamp(2.5rem, 7.4vw, 5.5rem); font-weight: 800; line-height: 1; letter-spacing: -0.04em; max-width: 14ch;
+  padding-left: 0.1em;
+  text-shadow: -0.06em 0.04em 0 var(--r), -0.06em -0.03em 0 var(--b), -0.08em -0.07em 0 var(--g);
+}
+h1 em { font-style: normal; }
+.lede { font-size: 1.25rem; font-weight: 300; line-height: 1.5; max-width: 54ch; }
+.cmd { display: flex; align-items: stretch; background: var(--black); color: var(--ink); max-width: 100%; width: fit-content; box-shadow: var(--edges); margin-left: 3px; }
+.cmd pre { margin: 0; padding: 0.9rem 1rem; overflow-x: auto; font-size: 0.9rem; min-width: 0; }
+.cmd pre::before { content: "$ "; color: var(--g); }
+.cmd button { font: 700 0.8rem var(--body); color: var(--g); background: var(--g-soft); border: 0; border-left: 2px solid var(--g); padding: 0 1.1rem; cursor: pointer; transition: background 0.2s ease; }
+.cmd button:hover { background: rgba(0, 255, 0, 0.2); }
+.fine { font-size: 0.92rem; color: var(--muted); }
+
+/* bands: the green rule with its blue echo, as on pixie.sh's track line */
+section { padding-block: 4rem; display: flex; flex-direction: column; gap: 2rem; position: relative; }
+section::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--g); box-shadow: -3px 2px 0 var(--b); }
+.label { font: 400 0.95rem var(--body); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); text-shadow: var(--split); }
+h2 { font-size: clamp(1.9rem, 4vw, 3rem); font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; max-width: 22ch; }
+h3 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
+.head { display: flex; flex-direction: column; gap: 0.85rem; }
+.head p { font-weight: 300; }
+
+/* before / after figure */
+.fig { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 2rem; padding-inline: 3px; }
+.panel { background: var(--black); box-shadow: var(--edges); padding: 1.35rem; display: flex; flex-direction: column; gap: 1.1rem; min-width: 0; }
+.panel h3 { font: 700 0.8rem var(--body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.rows { display: grid; gap: 0.5rem; }
+.row { display: grid; grid-template-columns: 1fr 2.5rem 1fr; align-items: center; }
+.chip { font: 700 0.85rem var(--body); letter-spacing: 0.02em; border: 1px solid var(--line); background: var(--raise); padding: 0.55rem 0.7rem; min-width: 0; overflow-wrap: anywhere; }
+.chip.silo { border: 1px dashed var(--r); background: transparent; color: var(--muted); font-weight: 400; }
+.wire { height: 0; border-top: 1px dashed var(--muted); }
+.merge { display: grid; grid-template-columns: 1fr 2.5rem 1fr; align-items: stretch; }
+.merge .rows { align-content: center; }
+.merge .bus { border: 2px solid var(--g); border-left: 0; margin-block: 1.1rem; box-shadow: 2px 1px 0 var(--b); }
+.owner { display: flex; flex-direction: column; justify-content: center; gap: 0.5rem; }
+.owner .chip { border: 2px solid var(--g); background: var(--g-soft); color: var(--g); }
+.owner .down { font: 400 0.8rem var(--mono); color: var(--muted); padding-left: 0.7rem; }
+.panel p { font-size: 0.97rem; color: var(--muted); }
+
+/* lists of points */
+.points { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 2rem 2.5rem; }
+.points div { display: flex; flex-direction: column; gap: 0.45rem; min-width: 0; }
+.points h3 { text-shadow: -2px 1px 0 var(--b); }
+.points p { font-size: 1rem; color: var(--muted); }
+
+/* tables */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+th, td { text-align: left; padding: 0.7rem 1rem 0.7rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 700 0.75rem var(--body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); border-bottom-color: var(--r); }
+td.mono, td .mono { font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.yes { color: var(--g); font-weight: 700; }
+.no { color: var(--muted); }
+
+/* tabs */
+.tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.tabs button { font: 700 0.85rem var(--body); color: var(--muted); background: transparent; border: 2px solid var(--line); padding: 0.45rem 0.85rem; cursor: pointer; transition: all 0.2s ease; }
+.tabs button:hover { color: var(--g); border-color: var(--g-line); }
+.tabs button[aria-selected="true"] { color: var(--g); border-color: var(--g); background: var(--g-soft); }
+.snippet { background: var(--black); color: var(--ink); border: 2px solid rgba(0, 255, 0, 0.2); overflow-x: auto; }
+.snippet pre { margin: 0; padding: 1rem 1.1rem; font-size: 0.88rem; line-height: 1.55; }
+.snippet .where { display: block; color: var(--g); opacity: 0.7; }
+
+.status { display: grid; gap: 0.7rem; padding: 0; margin: 0; list-style: none; max-width: 62ch; }
+.status li { display: grid; grid-template-columns: 6.5rem 1fr; gap: 0.75rem; align-items: baseline; }
+.status .tag { font: 700 0.75rem var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.status .tag.ok { color: var(--g); }
+
+footer { border-top: 1px solid var(--r); box-shadow: 0 -2px 0 -1px var(--b); padding-block: 2rem 3rem; font-size: 0.92rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; justify-content: space-between; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* code panels and library grid, added for the library pages */
+.snippet[hidden] { display: none; }
+.snippet .out { display: block; color: var(--muted); }
+.fig pre { margin: 0; font-size: 0.82rem; line-height: 1.5; overflow-x: auto; color: var(--ink); }
+.fig .panel.good { box-shadow: -3px 3px 0 var(--g), -1.5px -1.5px 0 var(--b), 2px -2px 0 var(--g); }
+.bytes { display: grid; grid-template-columns: 6fr 2fr 8fr; gap: 0.5rem; padding-inline: 3px; }
+.bytes div { background: var(--black); box-shadow: var(--edges); padding: 1rem; min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.bytes b { font: 700 1rem var(--body); }
+.bytes span { font-size: 0.85rem; color: var(--muted); }
+.bytes .scope { box-shadow: -3px 3px 0 var(--g), -1.5px -1.5px 0 var(--g), 2px -2px 0 var(--g); }
+.bytes .scope b { color: var(--g); }
+td.wrap-ok { white-space: normal; min-width: 12rem; }
+.libs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 1.5rem; padding-inline: 3px; }
+.libs a { background: var(--black); box-shadow: var(--edges); padding: 1.1rem; text-decoration: none; display: flex; flex-direction: column; gap: 0.35rem; }
+.libs a b { font: 700 1.05rem var(--body); }
+.libs a span { font-size: 0.92rem; color: var(--muted); }
+.libs a[aria-current] { box-shadow: -3px 3px 0 var(--g), -1.5px -1.5px 0 var(--g), 2px -2px 0 var(--g); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="name">clone-go</span>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#usage">Usage</a>
+      <a href="#bench">Benchmark</a>
+      <a href="https://github.com/pixie-sh/clone-go">GitHub</a>
+      <a href="https://pixie.sh">pixie.sh</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Deep clone for Go, <em>standard library only.</em></h1>
+    <p class="lede">clone-go copies a value and everything it points to: slices, maps, pointers and nested structs. One generic function, no dependencies beyond <code>reflect</code>, and a second function for graphs with cycles.</p>
+    <div class="cmd">
+      <pre id="install-cmd">go get github.com/pixie-sh/clone-go</pre>
+      <button type="button" id="copy-install" data-copy="install-cmd">Copy</button>
+    </div>
+    <p class="fine">Go 1.25+. MIT licensed. The full contract is in the <a href="https://github.com/pixie-sh/clone-go#readme">README</a>.</p>
+  </div>
+
+  <section id="problem">
+    <div class="head">
+      <span class="label">The problem</span>
+      <h2>Assigning a struct copies the struct, not what it points to.</h2>
+      <p>Slices, maps and pointers inside a copied struct still refer to the original data. Change one and you change both, usually somewhere far from where the copy was made.</p>
+    </div>
+    <div class="fig">
+      <div class="panel">
+        <h3>A plain copy</h3>
+        <pre>orig := &amp;User{Name: &quot;Alice&quot;, Tags: []string{&quot;admin&quot;}}
+
+c := *orig
+c.Tags[0] = &quot;guest&quot;
+
+fmt.Println(orig.Tags[0]) // guest</pre>
+        <p>The two values share one backing array.</p>
+      </div>
+      <div class="panel good">
+        <h3>With clone-go</h3>
+        <pre>orig := &amp;User{Name: &quot;Alice&quot;, Tags: []string{&quot;admin&quot;}}
+
+c := clone.Clone(orig)
+c.Tags[0] = &quot;guest&quot;
+
+fmt.Println(orig.Tags[0]) // admin</pre>
+        <p>The clone owns its own slices, maps and pointers.</p>
+      </div>
+    </div>
+    <div class="points">
+      <div><h3>Nothing else in your module graph</h3><p>The library imports only the standard library. The benchmark harness lives in a separate sub-module, so its dependencies never reach yours.</p></div>
+      <div><h3>Typed in, typed out</h3><p><code>Clone[T]</code> takes a <code>*T</code> and returns a <code>*T</code>. There are no casts at the call site.</p></div>
+      <div><h3>Why we wrote it</h3><p>A third-party clone module kept breaking builds of <a href="https://pixie-sh.github.io/core-go/">core-go</a> with checksum mismatches. Deep clone is small enough to own.</p></div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="head">
+      <span class="label">How it works</span>
+      <h2>Two functions and one interface.</h2>
+    </div>
+    <div class="points">
+      <div><h3>Clone</h3><p>Walks the value with <code>reflect</code> and deep-copies exported pointers, slices, maps, structs, arrays and interfaces. For graphs without cycles.</p></div>
+      <div><h3>CloneSlowly</h3><p>The same walk with a visited map, so self-references and mutual pointers keep their shape in the copy.</p></div>
+      <div><h3>Cloneable[T]</h3><p>Give a type its own <code>Clone() *T</code> method and <code>Clone</code> calls it instead of using <code>reflect</code>.</p></div>
+      <div><h3>Safe to call concurrently</h3><p>No shared state between calls. <code>CloneSlowly</code> allocates its visited map per call.</p></div>
+      <div><h3>time.Time round-trips</h3><p>Scalar-like structs are copied whole, so wall clock, monotonic reading and location are preserved.</p></div>
+      <div><h3>nil in, nil out</h3><p>A nil pointer returns a typed nil <code>*T</code>.</p></div>
+    </div>
+  </section>
+
+  <section id="usage">
+    <div class="head">
+      <span class="label">Usage</span>
+      <h2>The three cases.</h2>
+    </div>
+    <div>
+      <div class="tabs" role="tablist" aria-label="Example">
+        <button type="button" role="tab" id="tab-usage-0" aria-controls="snip-usage-0" aria-selected="true">Clone</button>
+        <button type="button" role="tab" id="tab-usage-1" aria-controls="snip-usage-1" aria-selected="false">Cloneable</button>
+        <button type="button" role="tab" id="tab-usage-2" aria-controls="snip-usage-2" aria-selected="false">Cycles</button>
+      </div>
+    </div>
+    <div class="snippet" id="snip-usage-0" role="tabpanel" aria-labelledby="tab-usage-0"><pre>import clone &quot;github.com/pixie-sh/clone-go&quot;
+
+type User struct {
+    Name    string
+    Tags    []string
+    Meta    map[string]string
+    Created time.Time
+}
+
+orig := &amp;User{
+    Name:    &quot;Alice&quot;,
+    Tags:    []string{&quot;admin&quot;},
+    Meta:    map[string]string{&quot;plan&quot;: &quot;pro&quot;},
+    Created: time.Now(),
+}
+
+c := clone.Clone(orig)
+c.Name = &quot;Bob&quot;
+c.Tags[0] = &quot;guest&quot;
+c.Meta[&quot;plan&quot;] = &quot;free&quot;
+
+fmt.Println(orig.Name, orig.Tags[0], orig.Meta[&quot;plan&quot;]) // Alice admin pro
+fmt.Println(c.Created.Equal(orig.Created))              // true</pre></div>
+    <div class="snippet" id="snip-usage-1" role="tabpanel" aria-labelledby="tab-usage-1"><pre>type Foo struct{ Bar string }
+
+// *Foo implements clone.Cloneable[Foo].
+func (f *Foo) Clone() *Foo {
+    c := *f
+    return &amp;c
+}
+
+// Clone finds the method and calls it; reflect is skipped.
+c := clone.Clone(&amp;Foo{Bar: &quot;hello&quot;})</pre></div>
+    <div class="snippet" id="snip-usage-2" role="tabpanel" aria-labelledby="tab-usage-2"><pre>type Node struct {
+    Data int
+    Self *Node
+}
+
+n := &amp;Node{Data: 1}
+n.Self = n
+
+c := clone.CloneSlowly(n)
+
+fmt.Println(c.Self == c) // true: the cycle points at the copy
+fmt.Println(c != n)      // true: a fresh allocation</pre></div>
+    <p class="fine"><code>Clone</code> does not detect cycles and will not return on a cyclic graph. <code>CloneSlowly</code> does not consult <code>Cloneable[T]</code>.</p>
+  </section>
+
+  <section id="contract">
+    <div class="head">
+      <span class="label">Contract</span>
+      <h2>What is deep-cloned, and what is shared.</h2>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Field</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td class="wrap-ok">Exported pointer, slice, map, struct, interface, array</td><td class="wrap-ok">Deep-cloned, recursively.</td></tr>
+          <tr><td class="wrap-ok">Exported scalar</td><td class="wrap-ok">Copied.</td></tr>
+          <tr><td class="wrap-ok">Unexported field</td><td class="wrap-ok">Shallow-copied. Pointer-like data in it is shared with the original.</td></tr>
+          <tr><td class="wrap-ok"><code>func</code>, <code>chan</code>, <code>unsafe.Pointer</code></td><td class="wrap-ok">Shallow-copied.</td></tr>
+          <tr><td class="wrap-ok"><code>sync.Mutex</code> and other no-copy types</td><td class="wrap-ok">Not handled. Do not clone a struct that holds a live mutex.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="bench">
+    <div class="head">
+      <span class="label">Benchmark</span>
+      <h2>Next to huandu/go-clone.</h2>
+      <p>Apple M5 Pro, Go 1.24.4, medians of three runs. Rerun it with <code>go test -bench=. -benchmem</code> in the <code>benchmarks</code> sub-module.</p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Workload</th><th>huandu ns/op</th><th>clone-go ns/op</th><th>huandu allocs</th><th>clone-go allocs</th></tr></thead>
+        <tbody>
+          <tr><td class="wrap-ok">Simple struct, 2 fields</td><td class="wrap-ok">53</td><td class="wrap-ok">47</td><td class="wrap-ok">1</td><td class="wrap-ok">1</td></tr>
+          <tr><td class="wrap-ok"><code>map[string]*T</code></td><td class="wrap-ok">589</td><td class="wrap-ok">745</td><td class="wrap-ok">18</td><td class="wrap-ok">27</td></tr>
+          <tr><td class="wrap-ok">User: slice, map, two <code>time.Time</code></td><td class="wrap-ok">395</td><td class="wrap-ok">711</td><td class="wrap-ok">12</td><td class="wrap-ok">18</td></tr>
+          <tr><td class="wrap-ok">Slice of 100 items</td><td class="wrap-ok">5,214</td><td class="wrap-ok">5,163</td><td class="wrap-ok">103</td><td class="wrap-ok">3</td></tr>
+          <tr><td class="wrap-ok">Binary tree, 511 nodes</td><td class="wrap-ok">38,343</td><td class="wrap-ok">40,473</td><td class="wrap-ok">511</td><td class="wrap-ok">511</td></tr>
+          <tr><td class="wrap-ok">Self-cycle (<code>CloneSlowly</code>)</td><td class="wrap-ok">225</td><td class="wrap-ok">69</td><td class="wrap-ok">4</td><td class="wrap-ok">1</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine">clone-go is faster on small structs and on cycles, level on large slices with far fewer allocations, and up to 1.8 times slower on structs that mix slices and maps. A per-type field cache to close that gap is on the roadmap.</p>
+  </section>
+
+  <section id="family">
+    <div class="head">
+      <span class="label">Open source at Pixie</span>
+      <h2>One of a set that works together.</h2>
+      <p>These libraries run in our own services every day. Use one, or all of them.</p>
+    </div>
+    <div class="libs">
+      <a href="https://pixie-sh.github.io/memory-sharing-mcp/"><b>memory-sharing-mcp</b><span>One shared memory store for every agent CLI.</span></a>
+      <a href="https://pixie-sh.github.io/di-go/"><b>di-go</b><span>Dependency injection you can read.</span></a>
+      <a href="https://pixie-sh.github.io/ulid-go/"><b>ulid-go</b><span>Sortable IDs that carry their entity type.</span></a>
+      <a href="https://pixie-sh.github.io/errors-go/"><b>errors-go</b><span>Errors with a code and an HTTP status.</span></a>
+      <a href="https://pixie-sh.github.io/database-helpers-go/"><b>database-helpers-go</b><span>Query pipelines for SQL and Elasticsearch.</span></a>
+      <a href="https://pixie-sh.github.io/core-go/"><b>core-go</b><span>The core libraries behind our Go services.</span></a>
+      <a href="https://pixie-sh.github.io/clone-go/" aria-current="page"><b>clone-go</b><span>Deep clone with the standard library only.</span></a>
+    </div>
+  </section>
+
+  <footer>
+    <span>Made by <a href="https://pixie.sh">Pixie</a>. MIT licensed.</span>
+    <a href="https://github.com/pixie-sh/clone-go">github.com/pixie-sh/clone-go</a>
+  </footer>
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll('.tabs').forEach(function (list) {
+    var tabs = list.querySelectorAll('button');
+    function show(tab) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+      });
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { show(t); }); });
+    show(tabs[0]);
+  });
+
+  var btn = document.getElementById('copy-install');
+  btn.addEventListener('click', function () {
+    var el = document.getElementById(btn.dataset.copy);
+    function select() {
+      var r = document.createRange(); r.selectNodeContents(el);
+      var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    }
+    try {
+      navigator.clipboard.writeText(el.textContent).then(function () {
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+      }, select);
+    } catch (e) { select(); }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,5 +1,10 @@
 # clone-go
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/pixie-sh/clone-go.svg)](https://pkg.go.dev/github.com/pixie-sh/clone-go)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+Made by [Pixie](https://pixie.sh).
+
 Stdlib-only, reflect-based deep clone for Go, with an optional `Cloneable[T]` escape hatch.
 
 ```go
